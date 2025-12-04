@@ -5,6 +5,8 @@ export async function chatCompletionsLlamaKolosal(
   system: string = "",
   response_format: any = undefined
 ) {
+  if (!process.env.KOLOSAL_AI_TOKEN) throw new Error("Missing KOLOSAL_API_TOKEN in .env")
+
   const body = {
     model: "Llama 4 Maverick",
     messages: [
@@ -14,22 +16,18 @@ export async function chatCompletionsLlamaKolosal(
     response_format
   }
 
-  try {
-    const response = await fetch("https://api.kolosal.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.KOLOSAL_AI_TOKEN}`
-      },
-      body: JSON.stringify(body)
-    });
+  const response = await fetch("https://api.kolosal.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${process.env.KOLOSAL_AI_TOKEN}`
+    },
+    body: JSON.stringify(body)
+  });
 
-    const data = await response.json();
+  const data = await response.json();
 
-    return data.choices?.[0]?.message?.content || "";
-  } catch (e) {
-    throw e
-  }
+  return data.choices?.[0]?.message?.content || "";
 }
 
 export async function analyzeReviews(reviews: string[]) {
@@ -142,26 +140,15 @@ Kamu adalah analis produk dan UX expert.
             }
           }
         },
-        required: ["overall_sentiment", "summary_overall", "positive_points", "negative_ppints", "action_items_for_developer"],
+        required: ["overall_sentiment", "summary_overall", "positive_points", "negative_points", "action_items_for_developer"],
         additionalProperties: false
       }
     }
   }
 
-  try {
-    const summary = await chatCompletionsLlamaKolosal(msg, system, format);
+  const summary = await chatCompletionsLlamaKolosal(msg, system, format);
 
-    const cleaned = summary.replace(/^```(?:json)?/i, "")
-      .replace(/```$/i, "")
-      .trim()
-      .replace(/,\s*([}\]])/g, "$1")
-      .replace(/'([^']*)'/g, '"$1"')
-      .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
-
-    return JSON.parse(cleaned);
-  } catch (e) {
-    throw e
-  }
+  return JSON.parse(summary);
 }
 
 export async function fetchReviewsAndAnalyze(appId: string, reviewCount: number = 100) {

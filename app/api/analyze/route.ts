@@ -2,19 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchReviewsAndAnalyze, analyzeReviews } from "@/lib/ai";
 
 export async function GET(req: NextRequest) {
-  const appId = req.nextUrl.searchParams.get("appId");
+  try {
+    const appId = req.nextUrl.searchParams.get("appId");
 
-  if (!appId) {
+    if (!appId) {
+      return NextResponse.json(
+        { error: "Missing required parameter: appId" },
+        { status: 400 }
+      );
+    }
+
+    const result = await fetchReviewsAndAnalyze(appId);
+
     return NextResponse.json(
-      { error: "appId is required" },
-      { status: 400 }
+      { success: true, result },
+      { status: 200 }
+    );
+
+  } catch (error) {
+    console.error("GET /api/analyze error:", error);
+
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown server error",
+      },
+      { status: 500 }
     );
   }
-
-  const result = await fetchReviewsAndAnalyze(String(appId));
-
-  return NextResponse.json(result);
 }
+
+
 
 
 export async function POST(req: Request) {

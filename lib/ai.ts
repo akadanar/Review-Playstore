@@ -1,27 +1,38 @@
+import { getReviews } from "@/lib/reviews"
+
 export async function chatCompletionsLlamaKolosal(
   msg: string,
-  system: string = ""
+  system: string = "",
+  response_format: any = undefined
 ) {
-  const response = await fetch("https://api.kolosal.ai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${process.env.KOLOSAL_AI_TOKEN!}`
-    },
-    body: JSON.stringify({
-      model: "Llama 4 Maverick",
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: msg }
-      ]
-    })
-  });
+  const body = {
+    model: "Llama 4 Maverick",
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: msg }
+    ],
+    response_format
+  }
 
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content;
+  try {
+    const response = await fetch("https://api.kolosal.ai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${process.env.KOLOSAL_AI_TOKEN}`
+      },
+      body: JSON.stringify(body)
+    });
+
+    const data = await response.json();
+
+    return data.choices?.[0]?.message?.content || "";
+  } catch (e) {
+    throw e
+  }
 }
 
-export async function mecutAISuruhAnalisisReview(reviews: string[]) {
+export async function analyzeReviews(reviews: string[]) {
   const msg = `
 Analisis kumpulan review aplikasi berikut. Review dapat berasal dari berbagai rating (1–5), berbagai versi aplikasi, dan berbagai bahasa.
 
@@ -30,13 +41,6 @@ Analisis kumpulan review aplikasi berikut. Review dapat berasal dari berbagai ra
     Ringkas sentimen keseluruhan dari batch ini.
     Identifikasi poin positif utama (maksimal 7).
     Identifikasi poin negatif utama / masalah (maksimal 10).
-    Kelompokkan semua masalah ke dalam kategori berikut:
-    - stability (crash, error, freeze)
-    - performance (lambat, lag, loading)
-    - usability (UI/UX, navigasi, kebingungan fitur)
-    - feature_request (fitur yang diminta user)
-    - content_quality (data kurang akurat, konten jelek)
-    - other (hal lain yang tidak cocok kategori lain)
     Berikan action items untuk developer (maksimal 10), setiap poin harus:
     - jelas
     - actionable
@@ -52,14 +56,6 @@ Analisis kumpulan review aplikasi berikut. Review dapat berasal dari berbagai ra
       ],
       "negative_points": [
         "..."
-      ],
-      "issues_grouped": {
-        "stability": ["..."],
-        "performance": ["..."],
-        "usability": ["..."],
-        "feature_request": ["..."],
-        "content_quality": ["..."],
-        "other": ["..."]
       ],
       "action_items_for_developer": [
         {
@@ -94,12 +90,87 @@ Kamu adalah analis produk dan UX expert.
     Jika semua sudah valid, keluarkan HANYA JSON final tersebut.
 `;
 
-  const summary = await chatCompletionsLlamaKolosal(msg, system);
+  const format = {
+    type: "json_schema",
+    json_schema: {
+      name: "review_summary",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: {
+          overall_sentiment: {
+            type: "string",
+            enum: ["positive", "negative", "mixed", "neutral"]
+          },
+          summary_overall: {
+            type: "string"
+          },
+          positive_points: {
+            type: "array",
+            items: {
+              type: "string"
+            }
+          },
+          negative_points: {
+            type: "array",
+            items: {
+              type: "string"
+            }
+          },
+          action_items_for_developer: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                priority: {
+                  type: "string",
+                  enum: ["high", "medium", "low"]
+                },
+                area: {
+                  type: "string",
+                  enum: ["stability", "performance", "usability", "feature", "other"]
+                },
+                description: {
+                  type: "string"
+                },
+                reason: {
+                  type: "string"
+                }
+              },
+              required: ["priority", "area", "description", "reason"],
+              additionalProperties: false
+            }
+          }
+        },
+        required: ["overall_sentiment", "summary_overall", "positive_points", "negative_ppints", "action_items_for_developer"],
+        additionalProperties: false
+      }
+    }
+  }
 
-  const cleaned = summary
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/```$/i, "");
+  try {
+    const summary = await chatCompletionsLlamaKolosal(msg, system, format);
 
-  return JSON.parse(cleaned);
+    const cleaned = summary.replace(/^```(?:json)?/i, "")
+      .replace(/```$/i, "")
+      .trim()
+      .replace(/,\s*([}\]])/g, "$1")
+      .replace(/'([^']*)'/g, '"$1"')
+      .replace(/([{,]\s*)([A-Za-z0-9_]+)\s*:/g, '$1"$2":');
+
+    return JSON.parse(cleaned);
+  } catch (e) {
+    throw e
+  }
+}
+
+export async function fetchReviewsAndAnalyze(appId: string, reviewCount: number = 100) {
+  try {
+    const reviews = await getReviews(appId, reviewCount)
+
+    return await analyzeReviews(reviews)
+  } catch (e) {
+    console.error(e)
+    throw e
+  }
 }

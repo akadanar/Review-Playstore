@@ -1,5 +1,21 @@
-import { NextResponse } from "next/server";
-import { mecutAISuruhAnalisisReview } from "@/lib/ai";
+import { NextRequest, NextResponse } from "next/server";
+import { fetchReviewsAndAnalyze, analyzeReviews } from "@/lib/ai";
+
+export async function GET(req: NextRequest) {
+  const appId = req.nextUrl.searchParams.get("appId");
+
+  if (!appId) {
+    return NextResponse.json(
+      { error: "appId is required" },
+      { status: 400 }
+    );
+  }
+
+  const result = await fetchReviewsAndAnalyze(String(appId));
+
+  return NextResponse.json(result);
+}
+
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +30,7 @@ export async function POST(req: Request) {
     }
 
     // Jalankan analisis
-    const result = await mecutAISuruhAnalisisReview(body.reviews);
+    const result = await analyzeReviews(body.reviews);
 
     return NextResponse.json(result);
   } catch (err: any) {
